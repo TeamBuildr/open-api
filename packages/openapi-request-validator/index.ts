@@ -5,6 +5,15 @@ import { dummyLogger, Logger } from 'ts-log';
 const contentTypeParser = require('content-type');
 const LOCAL_DEFINITION_REGEX = /^#\/([^\/]+)\/([^\/]+)$/;
 
+export const v = new Ajv({
+  useDefaults: true,
+  allErrors: true,
+  unknownFormats: 'ignore',
+  missingRefs: 'fail',
+  // @ts-ignore TODO get Ajv updated to account for logger
+  logger: false,
+});
+
 export interface IOpenAPIRequestValidator {
   validate(request: OpenAPI.Request);
 }
@@ -24,7 +33,7 @@ export interface OpenAPIRequestValidatorArgs {
   componentSchemas?: IJsonSchema[];
   errorTransformer?(
     openAPIResponseValidatorValidationError: OpenAPIRequestValidatorError,
-    ajvError: Ajv.ErrorObject
+    ajvError: Ajv.ErrorObject,
   ): any;
 }
 
@@ -37,7 +46,8 @@ export interface OpenAPIRequestValidatorError {
 }
 
 export default class OpenAPIRequestValidator
-  implements IOpenAPIRequestValidator {
+  implements IOpenAPIRequestValidator
+{
   private bodySchema: IJsonSchema;
   private errorMapper: (ajvError: Ajv.ErrorObject) => any;
   private isBodyRequired: boolean;
@@ -91,51 +101,22 @@ export default class OpenAPIRequestValidator
       }
     }
 
-    const v = new Ajv({
-      useDefaults: true,
-      allErrors: true,
-      unknownFormats: 'ignore',
-      missingRefs: 'fail',
-      // @ts-ignore TODO get Ajv updated to account for logger
-      logger: false
-    });
-
     if (args.requestBody) {
       isBodyRequired = args.requestBody.required || false;
-    }
-
-    if (args.customFormats) {
-      let hasNonFunctionProperty;
-      Object.keys(args.customFormats).forEach(format => {
-        const func = args.customFormats[format];
-        if (typeof func === 'function') {
-          v.addFormat(format, func);
-        } else {
-          hasNonFunctionProperty = true;
-        }
-      });
-      if (hasNonFunctionProperty) {
-        throw new Error(
-          `${loggingKey}args.customFormats properties must be functions`
-        );
-      }
     }
 
     if (bodySchema) {
       bodyValidationSchema = {
         properties: {
-          body: bodySchema
-        }
+          body: bodySchema,
+        },
       };
     }
     if (args.componentSchemas) {
       // openapi v3:
-      Object.keys(args.componentSchemas).forEach(id => {
-        v.addSchema(args.componentSchemas[id], `#/components/schemas/${id}`);
-      });
     } else if (args.schemas) {
       if (Array.isArray(args.schemas)) {
-        args.schemas.forEach(schema => {
+        args.schemas.forEach((schema) => {
           const id = schema.id;
 
           if (id) {
@@ -159,15 +140,9 @@ export default class OpenAPIRequestValidator
       } else if (bodySchema) {
         bodyValidationSchema.definitions = args.schemas;
         bodyValidationSchema.components = {
-          schemas: args.schemas
+          schemas: args.schemas,
         };
       }
-    }
-
-    if (args.externalSchemas) {
-      Object.keys(args.externalSchemas).forEach(id => {
-        v.addSchema(args.externalSchemas[id], id);
-      });
     }
 
     if (args.requestBody) {
@@ -179,11 +154,11 @@ export default class OpenAPIRequestValidator
         this.requestBodyValidators[mediaTypeKey] = v.compile(
           transformOpenAPIV3Definitions({
             properties: {
-              body: resolvedSchema
+              body: resolvedSchema,
             },
             definitions: args.schemas || {},
-            components: { schemas: args.schemas }
-          })
+            components: { schemas: args.schemas },
+          }),
         );
       }
     }
@@ -217,7 +192,7 @@ export default class OpenAPIRequestValidator
         if (!this.validateBody({ body: request.body })) {
           errors.push.apply(
             errors,
-            withAddedLocation('body', this.validateBody.errors)
+            withAddedLocation('body', this.validateBody.errors),
           );
         }
       } else if (this.isBodyRequired) {
@@ -225,7 +200,7 @@ export default class OpenAPIRequestValidator
           location: 'body',
           message:
             'request.body was not present in the request.  Is a body-parser being used?',
-          schema: this.bodySchema
+          schema: this.bodySchema,
         };
       }
     }
@@ -236,12 +211,12 @@ export default class OpenAPIRequestValidator
         contentType,
         this.requestBody,
         this.logger,
-        this.loggingKey
+        this.loggingKey,
       );
       if (!mediaTypeMatch) {
         if (contentType) {
           mediaTypeError = {
-            message: `Unsupported Content-Type ${contentType}`
+            message: `Unsupported Content-Type ${contentType}`,
           };
         } else if (this.isBodyRequired) {
           errors.push({
@@ -249,7 +224,7 @@ export default class OpenAPIRequestValidator
             dataPath: '.body',
             params: {},
             message: 'media type is not specified',
-            location: 'body'
+            location: 'body',
           });
         }
       } else {
@@ -259,7 +234,7 @@ export default class OpenAPIRequestValidator
           if (!validateBody({ body: request.body })) {
             errors.push.apply(
               errors,
-              withAddedLocation('body', validateBody.errors)
+              withAddedLocation('body', validateBody.errors),
             );
           }
         } else if (this.isBodyRequired) {
@@ -267,7 +242,7 @@ export default class OpenAPIRequestValidator
             location: 'body',
             message:
               'request.body was not present in the request.  Is a body-parser being used?',
-            schema: bodySchema
+            schema: bodySchema,
           };
         }
       }
@@ -277,7 +252,7 @@ export default class OpenAPIRequestValidator
       if (!this.validateFormData(request.body)) {
         errors.push.apply(
           errors,
-          withAddedLocation('formData', this.validateFormData.errors)
+          withAddedLocation('formData', this.validateFormData.errors),
         );
       }
     }
@@ -286,7 +261,7 @@ export default class OpenAPIRequestValidator
       if (!this.validatePath(request.params || {})) {
         errors.push.apply(
           errors,
-          withAddedLocation('path', this.validatePath.errors)
+          withAddedLocation('path', this.validatePath.errors),
         );
       }
     }
@@ -297,7 +272,7 @@ export default class OpenAPIRequestValidator
       ) {
         errors.push.apply(
           errors,
-          withAddedLocation('headers', this.validateHeaders.errors)
+          withAddedLocation('headers', this.validateHeaders.errors),
         );
       }
     }
@@ -306,7 +281,7 @@ export default class OpenAPIRequestValidator
       if (!this.validateQuery(request.query || {})) {
         errors.push.apply(
           errors,
-          withAddedLocation('query', this.validateQuery.errors)
+          withAddedLocation('query', this.validateQuery.errors),
         );
       }
     }
@@ -314,17 +289,17 @@ export default class OpenAPIRequestValidator
     if (errors.length) {
       err = {
         status: 400,
-        errors: errors.map(this.errorMapper)
+        errors: errors.map(this.errorMapper),
       };
     } else if (schemaError) {
       err = {
         status: 400,
-        errors: [schemaError]
+        errors: [schemaError],
       };
     } else if (mediaTypeError) {
       err = {
         status: 415,
-        errors: [mediaTypeError]
+        errors: [mediaTypeError],
       };
     }
 
@@ -342,14 +317,14 @@ function byRequiredBodyParameters<T>(param: T): boolean {
 }
 
 function extendedErrorMapper(mapper) {
-  return ajvError => mapper(toOpenapiValidationError(ajvError), ajvError);
+  return (ajvError) => mapper(toOpenapiValidationError(ajvError), ajvError);
 }
 
 function getSchemaForMediaType(
   contentTypeHeader: string,
   requestBodySpec: OpenAPIV3.RequestBodyObject,
   logger: Logger,
-  loggingKey: string
+  loggingKey: string,
 ): string {
   if (!contentTypeHeader) {
     return;
@@ -362,7 +337,7 @@ function getSchemaForMediaType(
       loggingKey,
       'failed to parse content-type',
       contentTypeHeader,
-      e
+      e,
     );
     if (e instanceof TypeError && e.message === 'invalid media type') {
       return;
@@ -400,7 +375,7 @@ function getSchemaForMediaType(
 
 function lowercaseRequestHeaders(headers) {
   const lowerCasedHeaders = {};
-  Object.keys(headers).forEach(header => {
+  Object.keys(headers).forEach((header) => {
     lowerCasedHeaders[header.toLowerCase()] = headers[header];
   });
   return lowerCasedHeaders;
@@ -409,14 +384,14 @@ function lowercaseRequestHeaders(headers) {
 function lowercasedHeaders(headersSchema) {
   if (headersSchema) {
     const properties = headersSchema.properties;
-    Object.keys(properties).forEach(header => {
+    Object.keys(properties).forEach((header) => {
       const property = properties[header];
       delete properties[header];
       properties[header.toLowerCase()] = property;
     });
 
     if (headersSchema.required && headersSchema.required.length) {
-      headersSchema.required = headersSchema.required.map(header => {
+      headersSchema.required = headersSchema.required.map((header) => {
         return header.toLowerCase();
       });
     }
@@ -430,7 +405,7 @@ function toOpenapiValidationError(error): OpenAPIRequestValidatorError {
     path: 'instance' + error.dataPath,
     errorCode: `${error.keyword}.openapi.validation`,
     message: error.message,
-    location: error.location
+    location: error.location,
   };
 
   if (error.keyword === '$ref') {
@@ -444,7 +419,7 @@ function toOpenapiValidationError(error): OpenAPIRequestValidatorError {
 
   validationError.path = validationError.path.replace(
     error.location === 'body' ? /^instance\.body\.?/ : /^instance\.?/,
-    ''
+    '',
   );
 
   if (!validationError.path) {
@@ -471,7 +446,7 @@ function stripBodyInfo(error) {
 }
 
 function withAddedLocation(location, errors) {
-  errors.forEach(error => {
+  errors.forEach((error) => {
     error.location = location;
   });
 
@@ -483,14 +458,14 @@ function resolveAndSanitizeRequestBodySchema(
     | OpenAPIV3.ReferenceObject
     | OpenAPIV3.NonArraySchemaObject
     | OpenAPIV3.ArraySchemaObject,
-  v: Ajv.Ajv
+  v: Ajv.Ajv,
 ) {
   let resolved;
   let copied;
 
   if ('properties' in requestBodySchema) {
     const schema = requestBodySchema as OpenAPIV3.NonArraySchemaObject;
-    Object.keys(schema.properties).forEach(property => {
+    Object.keys(schema.properties).forEach((property) => {
       let prop = schema.properties[property];
       prop = sanitizeReadonlyPropertiesFromRequired(prop);
       prop = resolveAndSanitizeRequestBodySchema(prop, v);
@@ -516,38 +491,38 @@ function resolveAndSanitizeRequestBodySchema(
   } else if ('allOf' in requestBodySchema) {
     requestBodySchema.allOf = requestBodySchema.allOf.map(
       (
-        val
+        val,
       ):
         | OpenAPIV3.ReferenceObject
         | OpenAPIV3.NonArraySchemaObject
         | OpenAPIV3.ArraySchemaObject => {
         val = sanitizeReadonlyPropertiesFromRequired(val);
         return resolveAndSanitizeRequestBodySchema(val, v);
-      }
+      },
     );
   } else if ('oneOf' in requestBodySchema) {
     requestBodySchema.oneOf = requestBodySchema.oneOf.map(
       (
-        val
+        val,
       ):
         | OpenAPIV3.ReferenceObject
         | OpenAPIV3.NonArraySchemaObject
         | OpenAPIV3.ArraySchemaObject => {
         val = sanitizeReadonlyPropertiesFromRequired(val);
         return resolveAndSanitizeRequestBodySchema(val, v);
-      }
+      },
     );
   } else if ('anyOf' in requestBodySchema) {
     requestBodySchema.anyOf = requestBodySchema.anyOf.map(
       (
-        val
+        val,
       ):
         | OpenAPIV3.ReferenceObject
         | OpenAPIV3.NonArraySchemaObject
         | OpenAPIV3.ArraySchemaObject => {
         val = sanitizeReadonlyPropertiesFromRequired(val);
         return resolveAndSanitizeRequestBodySchema(val, v);
-      }
+      },
     );
   }
   return requestBodySchema;
@@ -557,10 +532,10 @@ function sanitizeReadonlyPropertiesFromRequired(
   schema:
     | OpenAPIV3.ReferenceObject
     | OpenAPIV3.NonArraySchemaObject
-    | OpenAPIV3.ArraySchemaObject
+    | OpenAPIV3.ArraySchemaObject,
 ) {
   if ('properties' in schema && 'required' in schema) {
-    const readOnlyProps = Object.keys(schema.properties).map(key => {
+    const readOnlyProps = Object.keys(schema.properties).map((key) => {
       const prop = schema.properties[key];
       if (prop && 'readOnly' in prop) {
         if (prop.readOnly === true) {
@@ -570,8 +545,8 @@ function sanitizeReadonlyPropertiesFromRequired(
       return;
     });
     readOnlyProps
-      .filter(i => i !== undefined)
-      .forEach(value => {
+      .filter((i) => i !== undefined)
+      .forEach((value) => {
         const index = schema.required.indexOf(value);
         schema.required.splice(index, 1);
       });
@@ -589,8 +564,8 @@ function recursiveTransformOpenAPIV3Definitions(object) {
         { type: 'null' },
         {
           type: object.type,
-          enum: object.enum
-        }
+          enum: object.enum,
+        },
       ];
       delete object.type;
       delete object.enum;
@@ -600,11 +575,13 @@ function recursiveTransformOpenAPIV3Definitions(object) {
 
     delete object.nullable;
   }
-  Object.keys(object).forEach(attr => {
+  Object.keys(object).forEach((attr) => {
     if (typeof object[attr] === 'object' && object[attr] !== null) {
       recursiveTransformOpenAPIV3Definitions(object[attr]);
     } else if (Array.isArray(object[attr])) {
-      object[attr].forEach(obj => recursiveTransformOpenAPIV3Definitions(obj));
+      object[attr].forEach((obj) =>
+        recursiveTransformOpenAPIV3Definitions(obj),
+      );
     }
   });
 }

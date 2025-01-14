@@ -1,6 +1,6 @@
 import { IOpenAPIDefaultSetter } from 'openapi-default-setter';
 import { IOpenAPIRequestCoercer } from 'openapi-request-coercer';
-import { IOpenAPIRequestValidator } from 'openapi-request-validator';
+import { IOpenAPIRequestValidator } from '@teambuildr/openapi-request-validator';
 import { IOpenAPIResponseValidator } from 'openapi-response-validator';
 import {
   IOpenAPISecurityHandler,

@@ -1,7 +1,7 @@
 import fsRoutes from 'fs-routes';
 import OpenAPIDefaultSetter from 'openapi-default-setter';
 import OpenAPIRequestCoercer from 'openapi-request-coercer';
-import OpenAPIRequestValidator from 'openapi-request-validator';
+import OpenAPIRequestValidator from '@teambuildr/openapi-request-validator';
 import OpenAPIResponseValidator from 'openapi-response-validator';
 import OpenAPISchemaValidator from 'openapi-schema-validator';
 import OpenAPISecurityHandler from 'openapi-security-handler';
@@ -17,7 +17,7 @@ import {
   OpenAPIFrameworkOperationContext,
   OpenAPIFrameworkPathContext,
   OpenAPIFrameworkPathObject,
-  OpenAPIFrameworkVisitor
+  OpenAPIFrameworkVisitor,
 } from './src/types';
 import {
   addOperationTagToApiDoc,
@@ -46,8 +46,9 @@ import {
   sortApiDocTags,
   sortOperationDocTags,
   toAbsolutePath,
-  withNoDuplicates
+  withNoDuplicates,
 } from './src/util';
+import { v } from '@teambuildr/openapi-request-validator';
 
 export {
   BasePath,
@@ -56,7 +57,7 @@ export {
   OpenAPIFrameworkPathContext,
   OpenAPIFrameworkPathObject,
   OpenAPIFrameworkAPIContext,
-  OpenAPIFrameworkOperationContext
+  OpenAPIFrameworkOperationContext,
 };
 export default class OpenAPIFramework implements IOpenAPIFramework {
   public readonly apiDoc;
@@ -98,17 +99,15 @@ export default class OpenAPIFramework implements IOpenAPIFramework {
       { name: 'featureType', required: true },
       { name: 'name', required: true },
       { name: 'pathSecurity', class: Array, className: 'Array' },
-      { name: 'securityHandlers', type: 'object' }
-    ].forEach(arg => {
+      { name: 'securityHandlers', type: 'object' },
+    ].forEach((arg) => {
       if (arg.required && !(arg.name in args)) {
         throw new Error(`${this.loggingPrefix}args.${arg.name} is required`);
       }
 
       if (arg.type && arg.name in args && typeof args[arg.name] !== arg.type) {
         throw new Error(
-          `${this.loggingPrefix}args.${arg.name} must be a ${
-            arg.type
-          } when given`
+          `${this.loggingPrefix}args.${arg.name} must be a ${arg.type} when given`,
         );
       }
 
@@ -118,18 +117,14 @@ export default class OpenAPIFramework implements IOpenAPIFramework {
         !(args[arg.name] instanceof arg.class)
       ) {
         throw new Error(
-          `${this.loggingPrefix}args.${arg.name} must be an instance of ${
-            arg.className
-          } when given`
+          `${this.loggingPrefix}args.${arg.name} must be an instance of ${arg.className} when given`,
         );
       }
     });
 
     if (!args.paths && !args.operations) {
       throw new Error(
-        `${
-          this.loggingPrefix
-        }args.paths and args.operations must not both be empty`
+        `${this.loggingPrefix}args.paths and args.operations must not both be empty`,
       );
     }
 
@@ -139,7 +134,9 @@ export default class OpenAPIFramework implements IOpenAPIFramework {
     this.basePaths = this.apiDoc.openapi
       ? getBasePathsFromServers(this.apiDoc.servers)
       : [
-          new BasePath({ url: (this.apiDoc.basePath || '').replace(/\/$/, '') })
+          new BasePath({
+            url: (this.apiDoc.basePath || '').replace(/\/$/, ''),
+          }),
         ];
     this.validateApiDoc =
       'validateApiDoc' in args ? !!args.validateApiDoc : true;
@@ -147,7 +144,7 @@ export default class OpenAPIFramework implements IOpenAPIFramework {
       version:
         (this.apiDoc as OpenAPIV3.Document).openapi ||
         (this.apiDoc as OpenAPIV2.Document).swagger,
-      extensions: this.apiDoc[`x-${this.name}-schema-extension`]
+      extensions: this.apiDoc[`x-${this.name}-schema-extension`],
     });
     this.customFormats = args.customFormats;
     this.dependencies = args.dependencies;
@@ -169,14 +166,14 @@ export default class OpenAPIFramework implements IOpenAPIFramework {
 
       if (apiDocValidation.errors.length) {
         this.logger.error(
-          `${this.loggingPrefix}Validating schema before populating paths`
+          `${this.loggingPrefix}Validating schema before populating paths`,
         );
         this.logger.error(
           `${this.loggingPrefix}validation errors`,
-          JSON.stringify(apiDocValidation.errors, null, '  ')
+          JSON.stringify(apiDocValidation.errors, null, '  '),
         );
         throw new Error(
-          `${this.loggingPrefix}args.apiDoc was invalid.  See the output.`
+          `${this.loggingPrefix}args.apiDoc was invalid.  See the output.`,
         );
       }
     }
@@ -193,7 +190,7 @@ export default class OpenAPIFramework implements IOpenAPIFramework {
             securityDefinitions: securitySchemes,
             securityHandlers: this.securityHandlers,
             operationSecurity: this.apiDoc.security,
-            loggingKey: `${this.name}-security`
+            loggingKey: `${this.name}-security`,
           })
         : null;
 
@@ -201,43 +198,71 @@ export default class OpenAPIFramework implements IOpenAPIFramework {
     let routes = [];
     const routesCheckMap = {};
 
+    if (this.customFormats) {
+      let hasNonFunctionProperty;
+      Object.keys(this.customFormats).forEach((format) => {
+        const func = this.customFormats[format];
+        if (typeof func === 'function') {
+          v.addFormat(format, func);
+        } else {
+          hasNonFunctionProperty = true;
+        }
+      });
+      if (hasNonFunctionProperty) {
+        throw new Error(
+          `${test}args.customFormats properties must be functions`,
+        );
+      }
+    }
+
+    if (this.apiDoc.components.schemas) {
+      Object.keys(this.apiDoc.components.schemas).forEach((id) => {
+        v.addSchema(
+          this.apiDoc.components.schemas[id],
+          `#/components/schemas/${id}`,
+        );
+      });
+    }
+
+    if (this.externalSchemas) {
+      Object.keys(this.externalSchemas).forEach((id) => {
+        v.addSchema(this.externalSchemas[id], id);
+      });
+    }
+
     if (this.paths) {
       paths = [].concat(this.paths);
       this.logger.debug(`${this.loggingPrefix}paths=`, paths);
-      paths.forEach(pathItem => {
+      paths.forEach((pathItem) => {
         if (byString(pathItem)) {
           pathItem = toAbsolutePath(pathItem);
           if (!byDirectory(pathItem)) {
             throw new Error(
-              `${
-                this.loggingPrefix
-              }args.paths contained a value that was not a path to a directory`
+              `${this.loggingPrefix}args.paths contained a value that was not a path to a directory`,
             );
           }
           routes = routes.concat(
             fsRoutes(pathItem, {
               glob: this.routesGlob,
-              indexFileRegExp: this.routesIndexFileRegExp
+              indexFileRegExp: this.routesIndexFileRegExp,
             })
-              .filter(fsRoutesItem => {
+              .filter((fsRoutesItem) => {
                 return this.pathsIgnore
                   ? !this.pathsIgnore.test(fsRoutesItem.route)
                   : true;
               })
-              .map(fsRoutesItem => {
+              .map((fsRoutesItem) => {
                 routesCheckMap[fsRoutesItem.route] = true;
                 return {
                   path: fsRoutesItem.route,
-                  module: require(fsRoutesItem.path)
+                  module: require(fsRoutesItem.path),
                 };
-              })
+              }),
           );
         } else {
           if (!pathItem.path || !pathItem.module) {
             throw new Error(
-              `${
-                this.loggingPrefix
-              }args.paths must consist of strings or valid route specifications`
+              `${this.loggingPrefix}args.paths must consist of strings or valid route specifications`,
             );
           }
           routes.push(pathItem);
@@ -248,7 +273,7 @@ export default class OpenAPIFramework implements IOpenAPIFramework {
 
     if (this.operations) {
       const apiDocPaths = this.apiDoc.paths;
-      Object.keys(apiDocPaths).forEach(apiDocPathUrl => {
+      Object.keys(apiDocPaths).forEach((apiDocPathUrl) => {
         const pathDoc = apiDocPaths[apiDocPathUrl];
         const route = {
           path: apiDocPathUrl,
@@ -265,41 +290,35 @@ export default class OpenAPIFramework implements IOpenAPIFramework {
                   innerFunction.apiDoc = methodDoc;
                   // Operations get dependencies injected in `this`
                   return innerFunction.bind({
-                    dependencies: { ...this.dependencies }
+                    dependencies: { ...this.dependencies },
                   });
                 })();
               } else if (operationId === undefined) {
                 this.logger.warn(
-                  `${
-                    this.loggingPrefix
-                  }path ${apiDocPathUrl}, operation ${method} is missing an operationId`
+                  `${this.loggingPrefix}path ${apiDocPathUrl}, operation ${method} is missing an operationId`,
                 );
               } else {
                 this.logger.warn(
-                  `${
-                    this.loggingPrefix
-                  }Operation ${operationId} not found in the operations parameter`
+                  `${this.loggingPrefix}Operation ${operationId} not found in the operations parameter`,
                 );
               }
 
               return acc;
-            }, {})
+            }, {}),
         };
 
         if (routesCheckMap[route.path]) {
           this.logger.warn(
-            `${this.loggingPrefix}Overriding path ${
-              route.path
-            } with handlers from operations`
+            `${this.loggingPrefix}Overriding path ${route.path} with handlers from operations`,
           );
-          const routeIndex = routes.findIndex(r => r.path === route.path);
+          const routeIndex = routes.findIndex((r) => r.path === route.path);
           routes[routeIndex] = {
             ...routes[routeIndex],
             ...route,
             module: {
               ...((routes[routeIndex] || {}).module || {}),
-              ...(route.module || {})
-            }
+              ...(route.module || {}),
+            },
           };
         } else {
           routes.push(route);
@@ -316,9 +335,7 @@ export default class OpenAPIFramework implements IOpenAPIFramework {
     });
     if (dups.length > 0) {
       throw new Error(
-        `${this.loggingPrefix}args.paths produced duplicate urls for "${
-          dups[0].path
-        }"`
+        `${this.loggingPrefix}args.paths produced duplicate urls for "${dups[0].path}"`,
       );
     }
 
@@ -326,12 +343,12 @@ export default class OpenAPIFramework implements IOpenAPIFramework {
       return copy(this.apiDoc);
     };
 
-    routes.forEach(routeItem => {
+    routes.forEach((routeItem) => {
       const route = routeItem.path;
       this.logger.debug(`${this.loggingPrefix}setting up`, route);
       const pathModule = injectDependencies(
         routeItem.module.default || routeItem.module,
-        this.dependencies
+        this.dependencies,
       );
       // express path params start with :paramName
       // openapi path params use {paramName}
@@ -351,18 +368,12 @@ export default class OpenAPIFramework implements IOpenAPIFramework {
       const methodsProcessed = {};
 
       new Set(
-        Object.keys(pathModule)
-          .concat(Object.keys(pathDoc))
-          .filter(byMethods)
-      ).forEach(methodAlias => {
+        Object.keys(pathModule).concat(Object.keys(pathDoc)).filter(byMethods),
+      ).forEach((methodAlias) => {
         const methodName = METHOD_ALIASES[methodAlias];
         if (methodName in methodsProcessed) {
           this.logger.warn(
-            `${
-              this.loggingPrefix
-            }${openapiPath}.${methodAlias} has already been defined as ${openapiPath}.${
-              methodsProcessed[methodName]
-            }. Ignoring the 2nd definition...`
+            `${this.loggingPrefix}${openapiPath}.${methodAlias} has already been defined as ${openapiPath}.${methodsProcessed[methodName]}. Ignoring the 2nd definition...`,
           );
           return;
         }
@@ -393,14 +404,14 @@ export default class OpenAPIFramework implements IOpenAPIFramework {
             this.originalApiDoc,
             originalPathItem,
             pathModule,
-            operationDoc
+            operationDoc,
           ),
           allowsFeatures: allowsFeatures(
             this,
             this.apiDoc,
             pathModule,
             pathDoc,
-            operationDoc
+            operationDoc,
           ),
           apiDoc: this.apiDoc,
           basePaths: this.basePaths,
@@ -410,7 +421,7 @@ export default class OpenAPIFramework implements IOpenAPIFramework {
           methodParameters: [],
           operationDoc,
           operationHandler,
-          path: openapiPath
+          path: openapiPath,
         };
 
         if (operationDoc) {
@@ -419,7 +430,7 @@ export default class OpenAPIFramework implements IOpenAPIFramework {
           if (operationDoc.tags) {
             sortOperationDocTags(operationDoc);
             operationDoc.tags.forEach(
-              addOperationTagToApiDoc.bind(null, this.apiDoc)
+              addOperationTagToApiDoc.bind(null, this.apiDoc),
             );
           }
 
@@ -432,7 +443,7 @@ export default class OpenAPIFramework implements IOpenAPIFramework {
                 this.apiDoc,
                 pathModule,
                 pathDoc,
-                operationDoc
+                operationDoc,
               )
             ) {
               // add response validation feature
@@ -448,9 +459,9 @@ export default class OpenAPIFramework implements IOpenAPIFramework {
                   this,
                   operationDoc.responses,
                   this.apiDoc,
-                  route
+                  route,
                 ),
-                customFormats: this.customFormats
+                customFormats: this.customFormats,
               });
 
               operationContext.features.responseValidator = responseValidator;
@@ -462,8 +473,8 @@ export default class OpenAPIFramework implements IOpenAPIFramework {
                 Array.isArray(operationDoc.parameters)
                   ? pathParameters.concat(operationDoc.parameters)
                   : pathParameters,
-                this.apiDoc
-              )
+                this.apiDoc,
+              ),
             );
             operationContext.methodParameters = methodParameters;
 
@@ -475,7 +486,7 @@ export default class OpenAPIFramework implements IOpenAPIFramework {
                   this.apiDoc,
                   pathModule,
                   pathDoc,
-                  operationDoc
+                  operationDoc,
                 )
               ) {
                 const requestValidator = new OpenAPIRequestValidator({
@@ -488,13 +499,14 @@ export default class OpenAPIFramework implements IOpenAPIFramework {
                     : undefined,
                   externalSchemas: this.externalSchemas,
                   customFormats: this.customFormats,
-                  requestBody: operationDoc.requestBody as OpenAPIV3.RequestBodyObject
+                  requestBody:
+                    operationDoc.requestBody as OpenAPIV3.RequestBodyObject,
                 });
                 operationContext.features.requestValidator = requestValidator;
                 this.logger.debug(
                   `${this.loggingPrefix}request validator on for`,
                   methodName,
-                  openapiPath
+                  openapiPath,
                 );
               }
 
@@ -504,14 +516,14 @@ export default class OpenAPIFramework implements IOpenAPIFramework {
                   this.apiDoc,
                   pathModule,
                   pathDoc,
-                  operationDoc
+                  operationDoc,
                 )
               ) {
                 const coercer = new OpenAPIRequestCoercer({
                   extensionBase: `x-${this.name}-coercion`,
                   loggingKey: `${this.name}-coercion`,
                   parameters: methodParameters,
-                  enableObjectCoercion: this.enableObjectCoercion
+                  enableObjectCoercion: this.enableObjectCoercion,
                 });
 
                 operationContext.features.coercer = coercer;
@@ -525,11 +537,11 @@ export default class OpenAPIFramework implements IOpenAPIFramework {
                   this.apiDoc,
                   pathModule,
                   pathDoc,
-                  operationDoc
+                  operationDoc,
                 )
               ) {
                 const defaultSetter = new OpenAPIDefaultSetter({
-                  parameters: methodParameters
+                  parameters: methodParameters,
                 });
                 operationContext.features.defaultSetter = defaultSetter;
               }
@@ -544,7 +556,7 @@ export default class OpenAPIFramework implements IOpenAPIFramework {
               } else if (this.pathSecurity.length) {
                 securityDefinition = getSecurityDefinitionByPath(
                   openapiPath,
-                  this.pathSecurity
+                  this.pathSecurity,
                 );
               }
             }
@@ -555,7 +567,7 @@ export default class OpenAPIFramework implements IOpenAPIFramework {
                 securityDefinitions: securitySchemes,
                 securityHandlers: this.securityHandlers,
                 operationSecurity: securityDefinition,
-                loggingKey: `${this.name}-security`
+                loggingKey: `${this.name}-security`,
               });
             } else if (apiSecurityMiddleware) {
               securityFeature = apiSecurityMiddleware;
@@ -576,7 +588,7 @@ export default class OpenAPIFramework implements IOpenAPIFramework {
         visitor.visitPath({
           basePaths: this.basePaths,
           getApiDoc,
-          getPathDoc: () => copy(pathDoc)
+          getPathDoc: () => copy(pathDoc),
         });
       }
     });
@@ -588,16 +600,14 @@ export default class OpenAPIFramework implements IOpenAPIFramework {
 
       if (apiDocValidation.errors.length) {
         this.logger.error(
-          `${this.loggingPrefix}Validating schema after populating paths`
+          `${this.loggingPrefix}Validating schema after populating paths`,
         );
         this.logger.error(
           `${this.loggingPrefix}validation errors`,
-          JSON.stringify(apiDocValidation.errors, null, '  ')
+          JSON.stringify(apiDocValidation.errors, null, '  '),
         );
         throw new Error(
-          `${
-            this.loggingPrefix
-          }args.apiDoc was invalid after populating paths.  See the output.`
+          `${this.loggingPrefix}args.apiDoc was invalid after populating paths.  See the output.`,
         );
       }
     }
@@ -605,7 +615,7 @@ export default class OpenAPIFramework implements IOpenAPIFramework {
     if (visitor.visitApi) {
       visitor.visitApi({
         basePaths: this.basePaths,
-        getApiDoc
+        getApiDoc,
       });
     }
   }

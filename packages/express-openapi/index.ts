@@ -4,8 +4,8 @@ import OpenAPIFramework, {
   BasePath,
   OpenAPIFrameworkArgs,
   OpenAPIFrameworkConstructorArgs
-} from 'openapi-framework';
-import { OpenAPIRequestValidatorError } from 'openapi-request-validator';
+} from '@teambuildr/openapi-framework';
+import { OpenAPIRequestValidatorError } from '@teambuildr/openapi-request-validator';
 import { OpenAPIResponseValidatorError } from 'openapi-response-validator';
 import { SecurityHandlers } from 'openapi-security-handler';
 import { OpenAPI, OpenAPIV3 } from 'openapi-types';

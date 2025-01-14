@@ -1,6 +1,6 @@
 {
-  "name": "openapi-request-validator",
-  "version": "3.8.3",
+  "name": "@teambuildr/openapi-request-validator",
+  "version": "3.8.4",
   "description": "Validate request properties against an OpenAPI spec.",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -14,7 +14,7 @@
     "test": "mocha",
     "travis-test": "npm run cover"
   },
-  "repository": "https://github.com/kogosoftwarellc/open-api/tree/master/packages/openapi-request-validator",
+  "repository": "https://github.com/TeamBuildr/open-api/tree/tb-main/packages/openapi-request-validator",
   "keywords": [
     "openapi",
     "validator",
@@ -25,12 +25,15 @@
   "bugs": {
     "url": "https://github.com/kogosoftwarellc/open-api/issues"
   },
-  "homepage": "https://github.com/kogosoftwarellc/open-api/tree/master/packages/openapi-request-validator#readme",
+  "homepage": "https://github.com/TeamBuildr/open-api/tree/tb-main/packages/openapi-request-validator#readme",
   "dependencies": {
     "ajv": "^6.5.4",
     "content-type": "^1.0.4",
     "openapi-jsonschema-parameters": "1.1.2",
     "openapi-types": "1.3.5",
     "ts-log": "^2.1.4"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.6"
   }
 }
